@@ -57,10 +57,48 @@ ROOT_URLCONF = 'webizcafe.urls'
 
 AUTH_USER_MODEL = 'drf.Author'
 
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+        'drf.authentication.JSONWebTokenAuthentication',
+    ),
+}
+
+DJOSER = {
+    'DOMAIN': '45.55.185.118:8080',
+    'SITE_NAME': 'webizcafe',
+    'DEFAULT_FROM_EMAIL': 'webizcafe@gmail.com',
+    'PASSWORD_RESET_CONFIRM_URL': '#/password/reset/confirm/{uid}/{token}',
+    'ACTIVATION_URL': '#/activate/{uid}/{token}',
+    'SEND_ACTIVATION_EMAIL': True,
+}
+
+import datetime
+JWT_AUTH = {
+    'JWT_SECRET_KEY': '28(jr$g)$g=2cs(5c9zexu8$4ez-o9%5ptwq7d=caw4xgtlq6r',
+    'JWT_ALGORITHM': 'HS256',
+    'JWT_VERIFY': True,
+    'JWT_VERIFY_EXPIRATION': True,
+    'JWT_LEEWAY': 0,
+    'JWT_AUDIENCE': None,
+    'JWT_ISSUER': None,
+    'JWT_ALLOW_REFRESH': True,
+    'JWT_AUTH_HEADER_PREFIX': 'JWT',
+    'JWT_EXPIRATION_DELTA': datetime.timedelta(seconds=300),
+    'JWT_REFRESH_EXPIRATION_DELTA': datetime.timedelta(days=7),
+}
+
+# List of callables that know how to import templates from various sources.
+TEMPLATE_LOADERS = (
+        'django.template.loaders.filesystem.Loader',
+        'django.template.loaders.app_directories.Loader',
+)
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR,os.path.join(BASE_DIR, 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
