@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 
 from django.db import models, migrations
 import django.contrib.auth.models
+import django.contrib.gis.db.models.fields
 import django.utils.timezone
 from django.conf import settings
 import django.core.validators
@@ -31,7 +32,6 @@ class Migration(migrations.Migration):
                 ('date_joined', models.DateTimeField(default=django.utils.timezone.now, verbose_name='date joined')),
                 ('birthday', models.DateField(null=True, blank=True)),
                 ('phone_number', models.CharField(blank=True, max_length=17, validators=[django.core.validators.RegexValidator(regex=b'^\\+?1?\\d{9,15}$', message=b"Phone number must be entered in the format: '+999999999'. Up to 15 digits allowed.")])),
-                ('followers', models.ManyToManyField(related_name='followees', editable=False, to=settings.AUTH_USER_MODEL)),
                 ('groups', models.ManyToManyField(related_query_name='user', related_name='user_set', to='auth.Group', blank=True, help_text='The groups this user belongs to. A user will get all permissions granted to each of their groups.', verbose_name='groups')),
                 ('user_permissions', models.ManyToManyField(related_query_name='user', related_name='user_set', to='auth.Permission', blank=True, help_text='Specific permissions for this user.', verbose_name='user permissions')),
             ],
@@ -90,18 +90,27 @@ class Migration(migrations.Migration):
             ],
         ),
         migrations.CreateModel(
+            name='Location',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('name', models.CharField(max_length=32)),
+                ('geometry', django.contrib.gis.db.models.fields.GeometryField(srid=4326, editable=False)),
+                ('address', models.CharField(unique=True, max_length=200)),
+                ('created', models.DateTimeField(editable=False)),
+                ('updated', models.DateTimeField(editable=False)),
+            ],
+        ),
+        migrations.CreateModel(
             name='Post',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('title', models.CharField(default=b'post title', max_length=1000)),
                 ('content', models.TextField(null=True, blank=True)),
                 ('status', models.CharField(default=b'submitted', max_length=20)),
-                ('type', models.CharField(default=b'office', max_length=20)),
-                ('geoid', models.PositiveIntegerField()),
+                ('posttype', models.CharField(default=b'office', max_length=20)),
                 ('created', models.DateTimeField(editable=False)),
-                ('updated', models.DateTimeField()),
+                ('updated', models.DateTimeField(editable=False)),
                 ('author', models.ForeignKey(related_name='posts', editable=False, to=settings.AUTH_USER_MODEL)),
-                ('parent', models.ForeignKey(related_name='childs', blank=True, editable=False, to='drf.Post')),
             ],
         ),
         migrations.CreateModel(
@@ -115,6 +124,19 @@ class Migration(migrations.Migration):
                 ('author', models.ForeignKey(related_name='images', editable=False, to=settings.AUTH_USER_MODEL)),
                 ('post', models.ForeignKey(related_name='images', editable=False, to='drf.Post')),
             ],
+        ),
+        migrations.CreateModel(
+            name='BoxedLocation',
+            fields=[
+                ('location_ptr', models.OneToOneField(parent_link=True, auto_created=True, primary_key=True, serialize=False, to='drf.Location')),
+                ('bbox_geometry', django.contrib.gis.db.models.fields.PolygonField(srid=4326)),
+            ],
+            bases=('drf.location',),
+        ),
+        migrations.AddField(
+            model_name='post',
+            name='location',
+            field=models.ForeignKey(related_name='posts', to='drf.Location'),
         ),
         migrations.AddField(
             model_name='comment',

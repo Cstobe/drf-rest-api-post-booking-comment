@@ -1,23 +1,50 @@
 from django.db import models
-from django.contrib.auth import user_logged_in, user_logged_out
-from django.contrib.auth.tokens import default_token_generator
 from django.conf import settings as django_settings
+from django.contrib.auth.tokens import default_token_generator
 
-from rest_framework import viewsets, permissions, mixins, renderers, status, response, generics, views
+from rest_framework import permissions, mixins, renderers, status, response, generics, views
+from rest_framework.reverse import reverse
 from rest_framework.decorators import detail_route
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
+from rest_framework.filters import DjangoFilterBackend
+from rest_framework_gis.filters import *
+from rest_framework_gis.pagination import GeoJsonPagination
 
-from drf.models import Author, Post, PostImage, BookingOption, Comment, Booking, BookingDateTime
+from drf.models import Author, Post, PostImage, BookingOption, Comment, Booking, BookingDateTime, Location, BoxedLocation
 from drf.serializers import AuthorSerializer, PostSerializer, PostImageSerializer, BookingOptionSerializer, CommentSerializer, BookingSerializer, BookingDateTimeSerializer
-from drf.serializers import UidAndTokenSerializer, JSONWebTokenSerializer, RefreshJSONWebTokenSerializer, VerifyJSONWebTokenSerializer
+from drf.serializers import UidAndTokenSerializer
+from drf.serializers import LocationSerializer, BoxedLocationSerializer
 from drf.permissions import IsAuthorOrReadOnly
 from drf import utils, signals
 
-class AuthorRegisterViewSet(mixins.CreateModelMixin, utils.SendEmailViewMixin, viewsets.GenericViewSet):
+class APIRootView(views.APIView):
+    """
+    api root endpoint
+    request method: Get
+    """
+    def get(self, request, format=None):
+        data = {
+            'register': reverse('author-create', request=request, format=format),
+            'authors': reverse('author-list', request=request, format=format),
+            'post': reverse('post-list-create', request=request, format=format),
+            'comment': reverse('comment-create', request=request, format=format),
+            'booking': reverse('booking-create', request=request, format=format),
+ 
+            'obtainjwt': reverse('jwt-obtain', request=request, format=format),
+            'verifyjwt': reverse('jwt-verify', request=request, format=format),
+            'refreshjwt': reverse('jwt-refresh', request=request, format=format),
+
+            'location': reverse('location-list-create', request=request, format=format),
+        }
+        return Response(data)
+
+
+
+class AuthorRegisterView(utils.SendEmailViewMixin, generics.CreateAPIView):
     """
     Author registration endpoint
-    Allowed request method: post
+    Allowed request method: Post
     """
     permission_classes = [permissions.AllowAny]
     serializer_class = AuthorSerializer
@@ -31,120 +58,54 @@ class AuthorRegisterViewSet(mixins.CreateModelMixin, utils.SendEmailViewMixin, v
         self.send_email(**self.get_send_email_kwargs(instance))
 
     def get_email_context(self, user):
-        context = super(AuthorRegisterViewSet, self).get_email_context(user)
+        context = super(AuthorRegisterView, self).get_email_context(user)
         context['url'] = django_settings.DJOSER['ACTIVATION_URL'].format(**context)
         return context 
 
-class ActivationView(utils.ActionViewMixin, generics.GenericAPIView):
+class ActivationView(views.APIView):
     """
     Use this endpoint to activate user account.
     """
-    serializer_class = UidAndTokenSerializer
-    permission_classes = (
-        permissions.AllowAny,
-    )
-    token_generator = default_token_generator
+    permission_classes = (permissions.AllowAny,)
 
-    def action(self, serializer):
-        serializer.author.is_active = True
-        serializer.author.save()
-        signals.user_activated.send(
-            sender=self.__class__, user=serializer.author, request=self.request)
-        return Response(status=status.HTTP_200_OK)
-
-
-class JSONWebTokenAPIView(views.APIView):
-    """
-    Base API View that various JWT interactions inherit from.
-    """
-    permission_classes = ()
-    authentication_classes = ()
-
-    def get_serializer_context(self):
-        """
-        Extra context provided to the serializer class.
-        """
-        return {
-            'request': self.request,
-            'view': self,
-        }
-
-    def get_serializer_class(self):
-        """
-        Return the class to use for the serializer.
-        Defaults to using `self.serializer_class`.
-        You may want to override this if you need to provide different
-        serializations depending on the incoming request.
-        (Eg. admins get full serialization, others get basic serialization)
-        """
-        assert self.serializer_class is not None, (
-            "'%s' should either include a `serializer_class` attribute, "
-            "or override the `get_serializer_class()` method."
-            % self.__class__.__name__)
-        return self.serializer_class
-
-    def get_serializer(self, *args, **kwargs):
-        """
-        Return the serializer instance that should be used for validating and
-        deserializing input, and for serializing output.
-        """
-        serializer_class = self.get_serializer_class()
-        kwargs['context'] = self.get_serializer_context()
-        return serializer_class(*args, **kwargs)
-
-    def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(
-            data=request.data
-        )
-
+    def get(self, request, uid, token, format=None):
+        dictionary = {}
+        dictionary['uid'] = uid
+        dictionary['token'] = token
+        serializer = UidAndTokenSerializer(data=dictionary)
         if serializer.is_valid():
-            user = serializer.validated_data.get('user') or request.user
-            token = serializer.validated_data.get('token')
-            response_data = utils.jwt_response_payload_handler(token, user, request)
+            serializer.author.is_active = True
+            serializer.author.save()
+            signals.user_activated.send(sender=self.__class__, user=serializer.author, request=self.request)
+            return Response(data=uid, status=status.HTTP_200_OK)
+        else:
+            return response.Response(
+                data=serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-            return Response(response_data)
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class ObtainJSONWebToken(JSONWebTokenAPIView):
+class AuthorListView(generics.ListAPIView):
     """
-    API View that receives a POST with a user's username and password.
-    Returns a JSON Web Token that can be used for authenticated requests.
-    """
-    serializer_class = JSONWebTokenSerializer
-
-
-class VerifyJSONWebToken(JSONWebTokenAPIView):
-    """
-    API View that checks the veracity of a token, returning the token if it
-    is valid.
-    """
-    serializer_class = VerifyJSONWebTokenSerializer
-
-
-class RefreshJSONWebToken(JSONWebTokenAPIView):
-    """
-    API View that returns a refreshed token (with new expiration) based on
-    existing token
-    If 'orig_iat' field (original issued-at-time) is found, will first check
-    if it's within expiration window, then copy it to the new token
-    """
-    serializer_class = RefreshJSONWebTokenSerializer
-
-
-
-class AuthorViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
-    """
-    Author list, as well as detail retrieve, update, and delete endpoint
-    Allowed request method: get, post, put, delete
+    List all of active users
+    Allowed request method: Get
+    authentication is required
     """
     queryset = Author.objects.filter(is_active=True)
+    serializer_class = AuthorSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+
+class AuthorDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve, Update, and Delete author, as well as reset password endpoint
+    Allowed request method: Get, Post, Delete
+    """
     serializer_class = AuthorSerializer
     permission_classes = [permissions.IsAuthenticated]
     
     def get_object(self):
-        queryset = self.get_queryset()
+        queryset = Author.objects.filter(is_active=True)
         obj = get_object_or_404(queryset.filter(pk=self.request.user.pk)[0])
         self.check_object_permissions(self.request, obj)
         return obj
@@ -155,6 +116,12 @@ class AuthorViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Upd
             if obj.username != request.data['username']:
                 return Response({'detail': 'Username does not match'}, status=status.HTTP_400_BAD_REQUEST)
         obj.is_active=False
+        obj.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @detail_route(methods=['post'], url_path='change-password')
+    def reset_password(self, request, **kwargs):
+        obj = self.get_object()
         obj.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -172,70 +139,135 @@ class AuthorViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Upd
         return Response({'status': 'password reset'})
    
 
-class PostViewSet(viewsets.ModelViewSet):
+class PostListCreateView(generics.ListCreateAPIView):
     """
-    Post list, create, as well as detail retrieve, update, and delete endpoint
-    Allowed request method: get, post, put, delete
-    Relationals: post image, booking option in create
+    List and Create post endpoint
+    Allowed request method: Get (list), Post (create)
+    """
+    queryset = Post.objects.all()
+    serializer_class = PostSerializer
+    permission_classes = (permissions.AllowAny,)
+
+
+class PostDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve, Update, and Delete post endpoint
+    Allowed request method: Get, Post, Delete
     """
     queryset = Post.objects.all()
     serializer_class = PostSerializer
     permission_classes = [IsAuthorOrReadOnly]
-
     
-class AuthorPostViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
-    """
-    
-    """
 
-
-class PostImageViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
+class PostImageDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
-    Post image list, as well as detail retrieve, update, and delete endpoint
-    Allowed request method: get, post, put, delete
+    Retrieve, Update, and Delete post image endpoint
+    Allowed request method: Get, Post, Delete
     """
     queryset = PostImage.objects.all()
     serializer_class = PostImageSerializer
     permission_classes = [IsAuthorOrReadOnly]
 
 
-class BookingOptionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
+class BookingOptionDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
-    Booking option list, as well as detail retrieve, update, and delete endpoint
-    Allowed request method: get, post, put, delete
+    Retrieve, Update, and Delete booking option endpoint
+    Allowed request method: Get, Post, Delete
     """
     queryset = BookingOption.objects.all()
     serializer_class = BookingOptionSerializer
     permission_classes = [IsAuthorOrReadOnly]
 
 
-class CommentViewSet(viewsets.ModelViewSet):
+class CommentCreateView(generics.CreateAPIView):
     """
-    Comment list, create, as well as detail retrieve, update, and delete endpoint
-    Allowed request method: get, post, put, delete
+    Create comment endpoint
+    Allowed request method: Post
+    """
+    serializer_class = CommentSerializer
+    permission_classes = [permissions.AllowAny,]
+
+
+class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve, Update, and Delete comment endpoint
+    Allowed request method: Get, Post, Delete
     """
     queryset = Comment.objects.all()
     serializer_class = CommentSerializer
     permission_classes = [IsAuthorOrReadOnly]
 
 
-class BookingViewSet(viewsets.ModelViewSet):
+class BookingCreateView(generics.CreateAPIView):
     """
-    Booking list, create, as well as detail retrieve, update, and delete endpoint
-    Allowed request method: get, post, put, delete
+    Create booking endpoint
+    Allowed request method: Post
+    """
+    serializer_class = BookingSerializer
+    permission_classes = [permissions.AllowAny,]
+
+
+class BookingDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve, Update, and Delete booking endpoint
+    Allowed request method: Get, Post, Delete
     """
     queryset = Booking.objects.all()
     serializer_class = BookingSerializer
     permission_classes = [IsAuthorOrReadOnly]
 
 
-class BookingDateTimeViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
+class BookingDateTimeDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
-    Booking date time list, as well as detail retrieve, update, and delete endpoint
-    Defined request method: get, post, put, delete
+    Retrieve, Update, and Delete booking date time endpoint
+    Defined request method: Get, Post, Delete
     """
     queryset = BookingDateTime.objects.all()
     serializer_class = BookingDateTimeSerializer
     permission_classes = [IsAuthorOrReadOnly]
+
+
+
+####### geodjango gis ###########
+class LocationListCreateView(generics.ListCreateAPIView):
+    model = Location
+    serializer_class = LocationSerializer
+    queryset = Location.objects.all()
+    pagination_class = GeoJsonPagination
+
+
+class LocationContainedInBBoxListView(generics.ListAPIView):
+    model = Location
+    serializer_class = LocationSerializer
+    queryset = Location.objects.all()
+    bbox_filter_field = 'geometry'
+    filter_backends = (InBBoxFilter,)
+
+
+class LocationWithinDistanceOfPointListView(generics.ListAPIView):
+    model = Location
+    serializer_class = LocationSerializer
+    distance_filter_convert_meters = True
+    queryset = Location.objects.all()
+    distance_filter_field = 'geometry'
+    filter_backends = (DistanceToPointFilter,)
+
+
+class LocationDetailView(generics.RetrieveUpdateDestroyAPIView):
+    model = Location
+    serializer_class = LocationSerializer
+    queryset = Location.objects.all()
+
+
+class BoxedLocationDetailView(generics.RetrieveUpdateDestroyAPIView):
+    model = BoxedLocation
+    serializer_class = BoxedLocationSerializer
+    queryset = BoxedLocation.objects.all()
+
+
+class BoxedLocationListView(generics.ListCreateAPIView):
+    model = BoxedLocation
+    serializer_class = BoxedLocationSerializer
+    queryset = BoxedLocation.objects.all()
 
 

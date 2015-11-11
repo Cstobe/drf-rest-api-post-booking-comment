@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.core.validators import RegexValidator
+from django.contrib.gis.db import models
+from django.utils import timezone
 
 
 class Author(AbstractUser):
@@ -8,18 +10,40 @@ class Author(AbstractUser):
     phone_regex = RegexValidator(regex=r'^\+?1?\d{9,15}$', message="Phone number must be entered in the format: '+999999999'. Up to 15 digits allowed.")
     phone_number = models.CharField(validators=[phone_regex], blank=True, max_length=17) # validators should be a list
 
+
+class Location(models.Model):
+    name = models.CharField(max_length=32)
+    geometry = models.GeometryField(editable=False)
+    address = models.CharField(unique=True, max_length=200)
+    created = models.DateTimeField(editable=False)
+    updated = models.DateTimeField(editable=False)
+    objects = models.GeoManager()
+
+    def __unicode__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        ''' On save, update timestamps '''
+        if not self.id:
+            self.created = timezone.now()
+        self.updated = timezone.now()
+        return super(Location, self).save(*args, **kwargs)
+
+
+class BoxedLocation(Location):
+    bbox_geometry = models.PolygonField()
+
 	
 class Post(models.Model):
-    author = models.ForeignKey(Author, blank=False, editable=False, related_name='posts')
-    parent = models.ForeignKey('self', blank=True, editable=False, related_name='childs')
+    author   = models.ForeignKey(Author, blank=False, editable=False, related_name='posts')
+    location = models.ForeignKey(Location, related_name='posts')
 
     title = models.CharField(max_length=1000, default='post title')
     content = models.TextField(blank=True, null=True)
     status = models.CharField(max_length=20, default='submitted')
-    type = models.CharField(max_length=20, default='office')
-    geoid = models.PositiveIntegerField()
+    posttype = models.CharField(max_length=20, default='office')
     created = models.DateTimeField(editable=False)
-    updated = models.DateTimeField()
+    updated = models.DateTimeField(editable=False)
 
     def __unicode__(self):
         return self.title

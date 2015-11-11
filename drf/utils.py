@@ -1,13 +1,11 @@
 from django.core.mail import EmailMultiAlternatives, EmailMessage
 from django.template import loader
-from django.utils.translation import ugettext_lazy as _
 from django.conf import settings as django_settings
+from django.utils.translation import ugettext_lazy as _
 
 from rest_framework import response, status
 
-import jwt
-from calendar import timegm
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from drf.models import Author
 
@@ -127,75 +125,4 @@ class SendEmailViewMixin(object):
             'token': token,
             'protocol': 'https' if self.request.is_secure() else 'http',
         }
-
-
-def jwt_payload_handler(author):
-    username_field = Author.USERNAME_FIELD
-    username = author.get_username()
-
-    payload = {
-        'user_id': author.pk,
-        'email': author.email,
-        'username': username,
-        'exp': datetime.utcnow() + django_settings.JWT_AUTH['JWT_EXPIRATION_DELTA']
-    }
-
-    payload[username_field] = username
-
-    # Include original issued at time for a brand new token,
-    # to allow token refresh
-    if django_settings.JWT_AUTH['JWT_ALLOW_REFRESH']:
-        payload['orig_iat'] = timegm(
-            datetime.utcnow().utctimetuple()
-        )
-    return payload
-
-
-def jwt_get_username_from_payload_handler(payload):
-    """
-    Override this function if username is formatted differently in payload
-    """
-    return payload.get('username')
-
-
-def jwt_encode_handler(payload):
-    return jwt.encode(
-        payload,
-        django_settings.JWT_AUTH['JWT_SECRET_KEY'],
-        django_settings.JWT_AUTH['JWT_ALGORITHM']
-    ).decode('utf-8')
-
-
-def jwt_decode_handler(token):
-    options = {
-        'verify_exp': django_settings.JWT_AUTH['JWT_VERIFY_EXPIRATION'],
-    }
-
-    return jwt.decode(
-        token,
-        django_settings.JWT_AUTH['JWT_SECRET_KEY'],
-        django_settings.JWT_AUTH['JWT_VERIFY'],
-        options=options,
-        leeway=django_settings.JWT_AUTH['JWT_LEEWAY'],
-        audience=django_settings.JWT_AUTH['JWT_AUDIENCE'],
-        issuer=django_settings.JWT_AUTH['JWT_ISSUER'],
-        algorithms=[django_settings.JWT_AUTH['JWT_ALGORITHM']]
-    )
-
-
-def jwt_response_payload_handler(token, user=None, request=None):
-    """
-    Returns the response data for both the login and refresh views.
-    Override to return a custom response such as including the
-    serialized representation of the User.
-    Example:
-    def jwt_response_payload_handler(token, user=None, request=None):
-        return {
-            'token': token,
-            'user': UserSerializer(user).data
-        }
-    """
-    return {
-        'token': token
-    }
 
