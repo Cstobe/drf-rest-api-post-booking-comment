@@ -43,6 +43,7 @@ INSTALLED_APPS = (
     'rest_framework',
     'rest_framework_gis',
     'rest_framework_swagger',
+    'django_nose',
     'drf',
 )
 
@@ -66,7 +67,12 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.BasicAuthentication',
         'rest_framework_jwt.authentication.JSONWebTokenAuthentication',
-    ),
+    ) ,
+    'DEFAULT_FILTER_BACKENDS': 'rest_framework.filters.DjangoFilterBackend',
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
+    'PAGINATE_BY_PARAM': 'page_size',
+    'MAX_PAGINATE_BY': 100,
 }
 
 DJOSER = {
@@ -147,6 +153,18 @@ SWAGGER_SETTINGS = {
 }
 
 
+TEST_RUNNER = 'django_nose.NoseTestSuiteRunner'
+NOSE_ARGS = [
+    '--logging-filter=drf',
+    '--logging-level=DEBUG',
+]
+
+
+
+
+
+
+
 # List of callables that know how to import templates from various sources.
 TEMPLATE_LOADERS = (
         'django.template.loaders.filesystem.Loader',
@@ -222,13 +240,6 @@ LOGGING = {
         },
     }
 }
-
-#pagination
-REST_FRAMEWORK = {
-    'PAGINATE_BY': 10,
-}
-
-
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/1.8/howto/static-files/

@@ -11,8 +11,8 @@ from django.contrib.gis.geos import GEOSGeometry, Point
 
 from rest_framework import serializers
 from rest_framework.authtoken.models import Token
-
 from rest_framework_gis import serializers as gis_serializers
+from rest_framework_recursive.fields import RecursiveField
 
 from drf.models import Author, Post, PostImage, BookingOption, Comment, Booking, BookingDateTime, Location, BoxedLocation
 from drf import utils
@@ -150,48 +150,34 @@ class PostSerializer(serializers.HyperlinkedModelSerializer):
 
     class Meta:
         model = Post
-        fields = ('url', 'images', 'bookingoptions', 'location', 'bookings', 'bookingdatetime', 'comments', 'title', 'content', 'posttype', 'created', 'updated')
+        fields = ('url', 'author', 'images', 'bookingoptions', 'location', 'bookings', 'bookingdatetime', 'comments', 'title', 'content', 'posttype', 'created', 'updated')
 
     def create(self, validated_data):
         imagedatas = validated_data.pop('images')
         bookingoptiondatas = validated_data.pop('bookingoptions')
         locationdata = validated_data.pop('location')
-
-        g = geocoders.GoogleV3(django_settings.GOOGLE_API_KEY)
-        try:
-            res = g.geocode(locationdata['address'], exactly_one=False)
-            address, (lat, lng)= res[0]
-        except:
-            lat=0
-            lng=0
-
-        coordinate = GEOSGeometry('POINT(%f %f)' % (lat,lng))
-        location = Location.objects.create(
-            name=locationdata['name'],
-            address=locationdata['address'],
-            geometry=coordinate
-        )
-        location.save()
-
-        post = Post.objects.create(location=location, **validated_data)
-        if imagedatas:
-            for imagedata in imagedatas:
-                PostImage.objects.create(post=post, **imagedata)
-        if bookingoptiondatas:
-            for optiondata in bookingoptiondatas:
-                BookingOption.objects.create(post=post, **optiondata)
-        return post
+        serializer = LocationSerializer(data=locationdata)
+        if serializer.is_valid():
+            location = serializer.save()
+            post = Post.objects.create(location=location, **validated_data)
+            if imagedatas:
+                for imagedata in imagedatas:
+                    PostImage.objects.create(post=post, **imagedata)
+            if bookingoptiondatas:
+                for optiondata in bookingoptiondatas:
+                    BookingOption.objects.create(post=post, **optiondata)
+            return post
 
 		
 class CommentSerializer(serializers.HyperlinkedModelSerializer):
     author = serializers.HyperlinkedRelatedField(read_only=True, view_name='author-detail')
     post = serializers.HyperlinkedRelatedField(read_only=True, view_name='post-detail')
     parent = serializers.HyperlinkedRelatedField(read_only=True, view_name='comment-detail')
-    childs = serializers.HyperlinkedRelatedField(read_only=True, many=True, view_name='comment-detail')
+    children = RecursiveField(many=True, required=False, read_only=True)
 
     class Meta:
         model = Comment
-        fields = ('url', 'author', 'post', 'parent', 'childs', 'content', 'rating', 'created', 'updated')	
+        fields = ('url', 'author', 'post', 'parent', 'children', 'content', 'rating', 'created', 'updated')	
 
 
 class BookingDateTimeSerializer(serializers.HyperlinkedModelSerializer):

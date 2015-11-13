@@ -35,7 +35,7 @@ class BoxedLocation(Location):
 
 	
 class Post(models.Model):
-    author   = models.ForeignKey(Author, blank=False, editable=False, related_name='posts')
+    author = models.ForeignKey(Author, blank=False, editable=False, related_name='posts')
     location = models.ForeignKey(Location, related_name='posts')
 
     title = models.CharField(max_length=1000, default='post title')
@@ -63,7 +63,7 @@ class PostImage(models.Model):
     name = models.CharField(max_length=100, default='post image')
     image = models.ImageField(upload_to='postimage', max_length=1000)
     created = models.DateTimeField(editable=False)
-    updated = models.DateTimeField()
+    updated = models.DateTimeField(editable=False)
 
     def __unicode__(self):
         return self.name
@@ -89,13 +89,13 @@ class BookingOption(models.Model):
 class Comment(models.Model):
     author = models.ForeignKey(Author, blank=False, editable=False, related_name='comments')
     post = models.ForeignKey(Post, blank=False, editable=False, related_name='comments')
-    parent = models.ForeignKey('self', blank=True, editable=False, related_name='childs')
+    parent = models.ForeignKey('self', related_name='children', null=True, blank=True, editable=False)
 
     content = models.TextField(blank=True, null=True)
     rating = models.PositiveIntegerField()
     status = models.CharField(max_length=20, default='approved')
     created = models.DateTimeField(editable=False)
-    updated = models.DateTimeField()
+    updated = models.DateTimeField(editable=False)
 
     def __unicode__(self):
         return self.content
@@ -116,7 +116,7 @@ class Booking(models.Model):
     note = models.TextField(blank=True, null=True)
     status = models.CharField(max_length=20, default='approved')
     created = models.DateTimeField(editable=False)
-    updated = models.DateTimeField()
+    updated = models.DateTimeField(editable=False)
 
     def save(self, *args, **kwargs):
         ''' On save, update timestamps '''

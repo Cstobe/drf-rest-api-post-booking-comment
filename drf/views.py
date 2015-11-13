@@ -1,8 +1,9 @@
+import django_filters
 from django.db import models
 from django.conf import settings as django_settings
 from django.contrib.auth.tokens import default_token_generator
 
-from rest_framework import permissions, mixins, renderers, status, response, generics, views
+from rest_framework import permissions, mixins, renderers, status, response, generics, views, filters
 from rest_framework.reverse import reverse
 from rest_framework.decorators import detail_route
 from rest_framework.authtoken.models import Token
@@ -93,7 +94,7 @@ class AuthorListView(generics.ListAPIView):
     """
     queryset = Author.objects.filter(is_active=True)
     serializer_class = AuthorSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
 
 
 class AuthorDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -139,6 +140,16 @@ class AuthorDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Response({'status': 'password reset'})
    
 
+class PostFilter(django_filters.FilterSet):
+    min_price  = django_filters.NumberFilter(name="bookingoptions__value", lookup_type='gte')
+    max_price  = django_filters.NumberFilter(name="bookingoptions__value", lookup_type='lte')
+    min_rating = django_filters.NumberFilter(name="comments__rating", lookup_type='gte')
+    max_rating = django_filters.NumberFilter(name="comments__rating", lookup_type='lte')
+    class Meta:
+        model = Post
+        fields = ['posttype', 'min_price', 'max_price', 'min_rating', 'max_rating']
+
+
 class PostListCreateView(generics.ListCreateAPIView):
     """
     List and Create post endpoint
@@ -146,7 +157,13 @@ class PostListCreateView(generics.ListCreateAPIView):
     """
     queryset = Post.objects.all()
     serializer_class = PostSerializer
-    permission_classes = (permissions.AllowAny,)
+    permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
+    filter_backends = (filters.DjangoFilterBackend, filters.SearchFilter,)
+    filter_class = PostFilter
+    search_fields= ('title', 'content', 'comment__content', 'booking__note')
+
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)
 
 
 class PostDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -185,8 +202,18 @@ class CommentCreateView(generics.CreateAPIView):
     Allowed request method: Post
     """
     serializer_class = CommentSerializer
-    permission_classes = [permissions.AllowAny,]
+    permission_classes = [permissions.IsAuthenticated,]
 
+    def perform_create(self, serializer):
+        postid = self.request.data['post_id']
+        post = Post.objects.get(pk=postid)
+        if 'parent_id' in self.request.data:
+            parentid = self.request.data['parent_id']
+            if parentid > 0:
+                parent = Comment.objects.get(pk=parentid)
+                return serializer.save(author=self.request.user, post=post, parent=parent)
+
+        return serializer.save(author=self.request.user, post=post)
 
 class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
@@ -204,7 +231,10 @@ class BookingCreateView(generics.CreateAPIView):
     Allowed request method: Post
     """
     serializer_class = BookingSerializer
-    permission_classes = [permissions.AllowAny,]
+    permission_classes = [permissions.IsAuthenticated,]
+
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)
 
 
 class BookingDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -215,6 +245,25 @@ class BookingDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Booking.objects.all()
     serializer_class = BookingSerializer
     permission_classes = [IsAuthorOrReadOnly]
+
+
+class BookingDateTimeList(generics.ListAPIView):
+    """
+    booking datetime list endpoint
+    request method: Get (to list all booking datetime)
+    search field: timefrom and timeto
+    """
+    model = BookingDateTime
+    serializer_class = BookingDateTimeSerializer
+
+    def get_queryset(self):
+        queryset = BookingDateTime.objects.all()
+        timefrom = self.request.query_params.get('from', None)
+        timeto = self.request.query_params.get('to', None)
+        if timefrom is not None and timeto is not None:
+            queryset = queryset.filter( Q(end__lte=timefrom) | Q(begin_gte=timeto) )
+
+        return queryset
 
 
 class BookingDateTimeDetailView(generics.RetrieveUpdateDestroyAPIView):
