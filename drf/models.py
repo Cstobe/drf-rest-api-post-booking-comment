@@ -3,6 +3,7 @@ from django.contrib.auth.models import AbstractUser
 from django.core.validators import RegexValidator
 from django.contrib.gis.db import models
 from django.utils import timezone
+from django.utils.translation import gettext as _
 
 
 class Author(AbstractUser):
@@ -12,7 +13,6 @@ class Author(AbstractUser):
 
 
 class Location(models.Model):
-    name = models.CharField(max_length=32)
     geometry = models.GeometryField(editable=False)
     address = models.CharField(unique=True, max_length=200)
     created = models.DateTimeField(editable=False)
@@ -32,6 +32,7 @@ class Location(models.Model):
 
 class BoxedLocation(Location):
     bbox_geometry = models.PolygonField()
+    name = models.CharField(unique=True, max_length=50)
 
 	
 class Post(models.Model):
@@ -40,7 +41,9 @@ class Post(models.Model):
 
     title = models.CharField(max_length=1000, default='post title')
     content = models.TextField(blank=True, null=True)
-    status = models.CharField(max_length=20, default='submitted')
+    price = models.DecimalField(max_digits=8, decimal_places=2)
+    capacity = models.IntegerField()
+    city = models.CharField(max_length=20, default='beijing')
     posttype = models.CharField(max_length=20, default='office')
     created = models.DateTimeField(editable=False)
     updated = models.DateTimeField(editable=False)
@@ -54,20 +57,22 @@ class Post(models.Model):
             self.created = timezone.now()
         self.updated = timezone.now()
         return super(Post, self).save(*args, **kwargs)
-		
-			
+
+
+
+def upload_to(instance, filename):
+    return 'post_image/author_{0}/post_{1}/{2}'.format(instance.author.id, instance.post.id, filename)
+
 class PostImage(models.Model):
     author = models.ForeignKey(Author, blank=False, editable=False, related_name='images')
     post = models.ForeignKey(Post, blank=False, editable=False, related_name='images')
 
-    name = models.CharField(max_length=100, default='post image')
-    image = models.ImageField(upload_to='postimage', max_length=1000)
+    image = models.ImageField(_('image'), blank=True, null=True, upload_to=upload_to)
     created = models.DateTimeField(editable=False)
     updated = models.DateTimeField(editable=False)
 
     def __unicode__(self):
         return self.name
-
 
     def save(self, *args, **kwargs):
         ''' On save, update timestamps '''
@@ -76,15 +81,6 @@ class PostImage(models.Model):
         self.updated = timezone.now()
         return super(PostImage, self).save(*args, **kwargs)
 
-			
-class BookingOption(models.Model):
-    author = models.ForeignKey(Author, blank=False, editable=False, related_name='options')
-    post = models.ForeignKey(Post, blank=False, editable=False, related_name='options')
-
-    type = models.CharField(max_length=20, default='per day limit to 100 person')
-    value = models.DecimalField(max_digits=5, decimal_places=2)
-    unit = models.CharField(max_length=10, default='RMB')
-		
 
 class Comment(models.Model):
     author = models.ForeignKey(Author, blank=False, editable=False, related_name='comments')
@@ -111,10 +107,10 @@ class Comment(models.Model):
 class Booking(models.Model):
     author = models.ForeignKey(Author, blank=False, editable=False, related_name='bookings')
     post = models.ForeignKey(Post, blank=False, editable=False, related_name='bookings')
-    bookingoption = models.ForeignKey(BookingOption, blank=False, editable=False, related_name='bookings')
-
-    note = models.TextField(blank=True, null=True)
-    status = models.CharField(max_length=20, default='approved')
+    begin = models.DateTimeField(editable=True)
+    end = models.DateTimeField(editable=True)
+    title = models.CharField(max_length=1000, default='booking title')
+    status = models.CharField(max_length=20, default='proposed')
     created = models.DateTimeField(editable=False)
     updated = models.DateTimeField(editable=False)
 
@@ -124,15 +120,4 @@ class Booking(models.Model):
             self.created = timezone.now()
         self.updated = timezone.now()
         return super(Booking, self).save(*args, **kwargs)
-
-
-class BookingDateTime(models.Model):
-    author = models.ManyToManyField(Author, blank=False, editable=False, related_name='bookingdatetime')     # used by BookingDateTimeSerializer
-    post = models.ManyToManyField(Post, blank=False, editable=False, related_name='bookingdatetime')         # used by BookingDateTimeSerializer
-    booking = models.ManyToManyField(Booking, blank=False, editable=False, related_name='bookingdatetime')   # used by BookingSerializer
-
-    begin = models.DateTimeField(editable=True)
-    end = models.DateTimeField(editable=True)
-    status = models.CharField(max_length=20, default='approved')
-
 

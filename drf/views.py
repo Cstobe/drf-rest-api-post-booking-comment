@@ -1,5 +1,6 @@
 import django_filters
 from django.db import models
+from django.db.models import Q
 from django.conf import settings as django_settings
 from django.contrib.auth.tokens import default_token_generator
 
@@ -8,12 +9,13 @@ from rest_framework.reverse import reverse
 from rest_framework.decorators import detail_route
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
+from rest_framework.parsers import FormParser, MultiPartParser, FileUploadParser
 from rest_framework.filters import DjangoFilterBackend
 from rest_framework_gis.filters import *
 from rest_framework_gis.pagination import GeoJsonPagination
 
-from drf.models import Author, Post, PostImage, BookingOption, Comment, Booking, BookingDateTime, Location, BoxedLocation
-from drf.serializers import AuthorSerializer, PostSerializer, PostImageSerializer, BookingOptionSerializer, CommentSerializer, BookingSerializer, BookingDateTimeSerializer
+from drf.models import Author, Post, PostImage, Comment, Booking, Location, BoxedLocation
+from drf.serializers import AuthorSerializer, PostSerializer, PostImageSerializer, CommentSerializer, BookingSerializer
 from drf.serializers import UidAndTokenSerializer
 from drf.serializers import LocationSerializer, BoxedLocationSerializer
 from drf.permissions import IsAuthorOrReadOnly
@@ -140,14 +142,33 @@ class AuthorDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Response({'status': 'password reset'})
    
 
+class ListFilter(django_filters.CharFilter):
+    def sanitize(self, value_list):
+        return [v for v in value_list if v != u'']
+
+    def customize(self, value):
+        return value
+
+    def filter(self, qs, value):
+        multiple_vals = value.split(u",")
+        multiple_vals = self.sanitize(multiple_vals)
+        multiple_vals = map(self.customize, multiple_vals)
+        actual_filter = django_filters.fields.Lookup(multiple_vals, 'in')
+        return super(ListFilter, self).filter(qs, actual_filter)
+
+
 class PostFilter(django_filters.FilterSet):
-    min_price  = django_filters.NumberFilter(name="bookingoptions__value", lookup_type='gte')
-    max_price  = django_filters.NumberFilter(name="bookingoptions__value", lookup_type='lte')
+    posttype = ListFilter(name="posttype")
+    city = ListFilter(name="city")
+    min_price  = django_filters.NumberFilter(name="price", lookup_type='gte')
+    max_price  = django_filters.NumberFilter(name="price", lookup_type='lte')
+    min_capacity  = django_filters.NumberFilter(name="capacity", lookup_type='gte')
+    max_capacity  = django_filters.NumberFilter(name="capacity", lookup_type='lte')
     min_rating = django_filters.NumberFilter(name="comments__rating", lookup_type='gte')
-    max_rating = django_filters.NumberFilter(name="comments__rating", lookup_type='lte')
+    latest_updated = django_filters.DateTimeFilter(name="updated", lookup_type="gte")
     class Meta:
         model = Post
-        fields = ['posttype', 'min_price', 'max_price', 'min_rating', 'max_rating']
+        fields = ['posttype', 'city', 'min_price', 'max_price', 'min_capacity', 'max_capacity', 'min_rating', 'latest_updated']
 
 
 class PostListCreateView(generics.ListCreateAPIView):
@@ -160,10 +181,22 @@ class PostListCreateView(generics.ListCreateAPIView):
     permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
     filter_backends = (filters.DjangoFilterBackend, filters.SearchFilter,)
     filter_class = PostFilter
-    search_fields= ('title', 'content', 'comment__content', 'booking__note')
+    search_fields= ('title', 'content', 'comment__content')
 
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
+
+
+class AuthorPostListView(generics.ListAPIView):
+    """
+    List and Create post endpoint
+    Allowed request method: Get (list)
+    """
+    serializer_class = PostSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    def get_queryset(self):
+        user = self.request.user
+        return Post.objects.filter(author=user)
 
 
 class PostDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -174,26 +207,25 @@ class PostDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Post.objects.all()
     serializer_class = PostSerializer
     permission_classes = [IsAuthorOrReadOnly]
+
     
-
-class PostImageDetailView(generics.RetrieveUpdateDestroyAPIView):
+class PostImageView(generics.CreateAPIView):
     """
-    Retrieve, Update, and Delete post image endpoint
-    Allowed request method: Get, Post, Delete
+    List and Create post image endpoint
+    Allowed request method: Get, Post
     """
-    queryset = PostImage.objects.all()
     serializer_class = PostImageSerializer
-    permission_classes = [IsAuthorOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = (FormParser, MultiPartParser, FileUploadParser,)
 
-
-class BookingOptionDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """
-    Retrieve, Update, and Delete booking option endpoint
-    Allowed request method: Get, Post, Delete
-    """
-    queryset = BookingOption.objects.all()
-    serializer_class = BookingOptionSerializer
-    permission_classes = [IsAuthorOrReadOnly]
+    def perform_create(self, serializer):
+        if 'file' in self.request.data:
+            file_obj = self.request.data['file']
+            post = Post.objects.get(pk=self.kwargs['pk'])
+            serializer.save(author=self.request.user, post=post, image=file_obj)
+            return response.Response("image has been successfully uploaded", status=status.HTTP_201_CREATED)
+        else:
+            return response.Response("no upload file in request data", status=status.HTTP_400_BAD_REQUEST)
 
 
 class CommentCreateView(generics.CreateAPIView):
@@ -205,15 +237,38 @@ class CommentCreateView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated,]
 
     def perform_create(self, serializer):
-        postid = self.request.data['post_id']
+        postid = self.request.data['postid']
         post = Post.objects.get(pk=postid)
-        if 'parent_id' in self.request.data:
-            parentid = self.request.data['parent_id']
+        if 'parentid' in self.request.data:
+            parentid = self.request.data['parentid']
             if parentid > 0:
                 parent = Comment.objects.get(pk=parentid)
                 return serializer.save(author=self.request.user, post=post, parent=parent)
-
         return serializer.save(author=self.request.user, post=post)
+
+
+class PostCommentListView(generics.ListAPIView):
+    """
+    List Post Comment endpoint
+    Allowed request method: Get
+    """
+    serializer_class = CommentSerializer
+    permission_classes = (permissions.AllowAny,)
+    def get_queryset(self):
+        return Comment.objects.filter(post__pk=self.kwargs['pk'], parent=None)
+
+
+class AuthorCommentListView(generics.ListAPIView):
+    """
+    List Post Booking endpoint
+    Allowed request method: Get
+    """
+    serializer_class = CommentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    def get_queryset(self):
+        user = self.request.user
+        return Comment.objects.filter(author=user)
+
 
 class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
@@ -234,7 +289,48 @@ class BookingCreateView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated,]
 
     def perform_create(self, serializer):
-        serializer.save(author=self.request.user)
+        postid = self.request.data['postid']
+        post = Post.objects.get(pk=postid)
+        return serializer.save(author=self.request.user, post=post)
+
+
+class PostBookingListView(generics.ListAPIView):
+    """
+    List Post Booking endpoint
+    Allowed request method: Get
+    """
+    serializer_class = BookingSerializer
+    permission_classes = (permissions.AllowAny,)
+    def get_queryset(self):
+        return Booking.objects.filter(post__pk=self.kwargs['pk'])
+
+
+class AuthorBookingListView(generics.ListAPIView):
+    """
+    List Post Booking endpoint
+    Allowed request method: Get
+    """
+    serializer_class = BookingSerializer
+    def get_queryset(self):
+        user = self.request.user
+        return Booking.objects.filter(author=user)
+
+
+class BookingSearchView(generics.ListAPIView):
+    """
+    booking datetime list endpoint
+    request method: Get (to list all booking datetime)
+    search field: timefrom and timeto
+    """
+    serializer_class = BookingSerializer
+
+    def get_queryset(self):
+        queryset = Booking.objects.all()
+        timefrom = self.request.query_params.get('from', None)
+        timeto = self.request.query_params.get('to', None)
+        if timefrom is not None and timeto is not None:
+            queryset = queryset.filter( Q(end__lte=timefrom) | Q(begin_gte=timeto) )
+        return queryset
 
 
 class BookingDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -244,35 +340,6 @@ class BookingDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     queryset = Booking.objects.all()
     serializer_class = BookingSerializer
-    permission_classes = [IsAuthorOrReadOnly]
-
-
-class BookingDateTimeList(generics.ListAPIView):
-    """
-    booking datetime list endpoint
-    request method: Get (to list all booking datetime)
-    search field: timefrom and timeto
-    """
-    model = BookingDateTime
-    serializer_class = BookingDateTimeSerializer
-
-    def get_queryset(self):
-        queryset = BookingDateTime.objects.all()
-        timefrom = self.request.query_params.get('from', None)
-        timeto = self.request.query_params.get('to', None)
-        if timefrom is not None and timeto is not None:
-            queryset = queryset.filter( Q(end__lte=timefrom) | Q(begin_gte=timeto) )
-
-        return queryset
-
-
-class BookingDateTimeDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """
-    Retrieve, Update, and Delete booking date time endpoint
-    Defined request method: Get, Post, Delete
-    """
-    queryset = BookingDateTime.objects.all()
-    serializer_class = BookingDateTimeSerializer
     permission_classes = [IsAuthorOrReadOnly]
 
 

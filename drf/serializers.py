@@ -1,4 +1,5 @@
 from geopy import geocoders
+from django.db.models import Q
 from django.conf import settings as django_settings
 
 from datetime import datetime
@@ -14,17 +15,18 @@ from rest_framework.authtoken.models import Token
 from rest_framework_gis import serializers as gis_serializers
 from rest_framework_recursive.fields import RecursiveField
 
-from drf.models import Author, Post, PostImage, BookingOption, Comment, Booking, BookingDateTime, Location, BoxedLocation
+from drf.models import Author, Post, PostImage, Comment, Booking, Location, BoxedLocation
 from drf import utils
+from drf.fields import HyperlinkedSorlImageField
 
-class AuthorSerializer(serializers.HyperlinkedModelSerializer):
-    posts = serializers.HyperlinkedRelatedField(many=True, read_only=True, view_name='post-detail')
-    bookings = serializers.HyperlinkedRelatedField(many=True, read_only=True, view_name='booking-detail')
-    comments = serializers.HyperlinkedRelatedField(many=True, read_only=True, view_name='comment-detail')
+class AuthorSerializer(serializers.ModelSerializer):
+    posts = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    bookings = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    comments = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
 	
     class Meta:
         model = Author
-        fields = ('url', 'username', 'password', 'email', 'first_name', 'last_name', 'birthday', 'phone_number', 'date_joined', 'is_active', 'posts', 'bookings', 'comments')
+        fields = ('id', 'username', 'password', 'email', 'first_name', 'last_name', 'birthday', 'phone_number', 'date_joined', 'is_active', 'posts', 'bookings', 'comments')
         write_only_fields = ('password',)
         read_only_fields = ('url', 'is_active', 'date_joined')
 
@@ -81,22 +83,21 @@ class UidAndTokenSerializer(serializers.Serializer):
         return attrs
 
 
-class PostImageSerializer(serializers.HyperlinkedModelSerializer):
-    author = serializers.HyperlinkedRelatedField(read_only=True, view_name='author-detail')
+class PostImageSerializer(serializers.ModelSerializer):
+    author = serializers.ReadOnlyField(source='author.username')
+    post = serializers.PrimaryKeyRelatedField(read_only=True)
+    thumbnail = HyperlinkedSorlImageField(
+        '555x300',
+        options={"crop": "center"},
+        source='image',
+        read_only=True
+    )
+    fullsize = HyperlinkedSorlImageField('1140x668', source='image', read_only=True)
 
     class Meta:
         model = PostImage
-        fields = ('url', 'author', 'name', 'id', 'post', 'created', 'updated')
+        fields = ('id', 'image', 'thumbnail', 'fullsize', 'author', 'post', 'created', 'updated')
 		
-
-class BookingOptionSerializer(serializers.HyperlinkedModelSerializer):
-    author = serializers.HyperlinkedRelatedField(read_only=True, view_name='author-detail')
-    post = serializers.HyperlinkedRelatedField(read_only=True, view_name='post-detail')
-
-    class Meta:
-        model = BookingOption
-        fields = ('url', 'author', 'post', 'id', 'type', 'value', 'unit')
-
 
 class LocationSerializer(gis_serializers.GeoFeatureModelSerializer):
     """ location geo serializer  """
@@ -105,7 +106,7 @@ class LocationSerializer(gis_serializers.GeoFeatureModelSerializer):
     class Meta:
         model = Location
         geo_field = 'geometry'
-        fields = ['name', 'address', 'detail', 'created', 'updated']
+        fields = ['address', 'detail', 'created', 'updated']
 
     def create(self, validated_data):
         g = geocoders.GoogleV3(django_settings.GOOGLE_API_KEY)
@@ -118,7 +119,6 @@ class LocationSerializer(gis_serializers.GeoFeatureModelSerializer):
 
         coordinate = GEOSGeometry('POINT(%f %f)' % (lat,lng))
         location = Location.objects.create(
-            name=validated_data['name'],
             address=validated_data['address'],
             geometry=coordinate
         )
@@ -138,75 +138,46 @@ class BoxedLocationSerializer(gis_serializers.GeoFeatureModelSerializer):
 
 
 
-class PostSerializer(serializers.HyperlinkedModelSerializer):
-    author = serializers.HyperlinkedRelatedField(read_only=True, view_name='author-detail')
-    bookings = serializers.HyperlinkedRelatedField(read_only=True, many=True, view_name='booking-detail')
-    bookingdatetime = serializers.HyperlinkedRelatedField(read_only=True, many=True, view_name='bookingdatetime-detail')
-    comments = serializers.HyperlinkedRelatedField(read_only=True, many=True, view_name='comment-detail')
-
-    images = PostImageSerializer(required=False, many=True)
-    bookingoptions = BookingOptionSerializer(required=False, many=True)
+class PostSerializer(serializers.ModelSerializer):
+    author = serializers.ReadOnlyField(source='author.username')
+    bookings = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    comments = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    images = PostImageSerializer(required=False, many=True, read_only=True)
     location = LocationSerializer(required=True)
 
     class Meta:
         model = Post
-        fields = ('url', 'author', 'images', 'bookingoptions', 'location', 'bookings', 'bookingdatetime', 'comments', 'title', 'content', 'posttype', 'created', 'updated')
+        fields = ('id', 'author', 'images', 'location', 'bookings', 'comments', 'title', 'content', 'price', 'capacity', 'city', 'posttype', 'created', 'updated')
 
     def create(self, validated_data):
-        imagedatas = validated_data.pop('images')
-        bookingoptiondatas = validated_data.pop('bookingoptions')
         locationdata = validated_data.pop('location')
         serializer = LocationSerializer(data=locationdata)
         if serializer.is_valid():
             location = serializer.save()
             post = Post.objects.create(location=location, **validated_data)
-            if imagedatas:
-                for imagedata in imagedatas:
-                    PostImage.objects.create(post=post, **imagedata)
-            if bookingoptiondatas:
-                for optiondata in bookingoptiondatas:
-                    BookingOption.objects.create(post=post, **optiondata)
             return post
 
 		
-class CommentSerializer(serializers.HyperlinkedModelSerializer):
-    author = serializers.HyperlinkedRelatedField(read_only=True, view_name='author-detail')
-    post = serializers.HyperlinkedRelatedField(read_only=True, view_name='post-detail')
-    parent = serializers.HyperlinkedRelatedField(read_only=True, view_name='comment-detail')
+class CommentSerializer(serializers.ModelSerializer):
+    author = serializers.ReadOnlyField(source='author.username')
+    post = serializers.PrimaryKeyRelatedField(read_only=True)
+    parent = serializers.PrimaryKeyRelatedField(read_only=True)
     children = RecursiveField(many=True, required=False, read_only=True)
 
     class Meta:
         model = Comment
-        fields = ('url', 'author', 'post', 'parent', 'children', 'content', 'rating', 'created', 'updated')	
+        fields = ('id', 'author', 'post', 'parent', 'children', 'content', 'rating', 'created', 'updated')	
 
 
-class BookingDateTimeSerializer(serializers.HyperlinkedModelSerializer):
-    author = serializers.HyperlinkedRelatedField(read_only=True, view_name='author-detail')
-    post = serializers.HyperlinkedRelatedField(read_only=True, many=True, view_name='post-detail')
-
-    class Meta:
-        model = BookingDateTime
-        fields = ('url', 'author', 'post', 'begin', 'end')
-
-		
-class BookingSerializer(serializers.HyperlinkedModelSerializer):
-    author = serializers.HyperlinkedRelatedField(read_only=True, view_name='author-detail')
-    post = serializers.HyperlinkedRelatedField(read_only=True, view_name='post-detail')
-    bookingoption = serializers.HyperlinkedRelatedField(read_only=True, view_name='bookingoption-detail')
-
-    bookingdatetime = BookingDateTimeSerializer(required=True, many=True)
+class BookingSerializer(serializers.ModelSerializer):
+    author = serializers.ReadOnlyField(source='author.username')
+    post = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = Booking
-        fields = ('url', 'author', 'post', 'bookingoption', 'bookingdatetime', 'note', 'created', 'updated')
-	
-	def create(self, validated_data):
-            bookingdatetime = validated_data.pop('bookingdatetime')
-            booking = Booking.objects.create(**validated_data)
-            if datetime:
-                for datetime in bookingdatetime:
-                    BookingDateTime.objects.create(booking=booking, **datetime)
-            return booking
+        fields = ('id', 'author', 'post', 'begin', 'end', 'title', 'status', 'created', 'updated')
 
-
-
+    def validate(self, data):
+        if Booking.objects.filter( begin__lte=data['end'], end__gte=data['begin'] ).exists():
+            raise serializers.ValidationError("Overlapping dates")
+        return super(BookingSerializer, self).validate(data)

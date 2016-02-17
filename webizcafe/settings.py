@@ -15,6 +15,8 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+ALLOWED_HOSTS = []
+
 SECRET_KEY = '28(jr$g)$g=2cs(5c9zexu8$4ez-o9%5ptwq7d=caw4xgtlq6r'
 GOOGLE_API_KEY = 'AIzaSyBcMpu4LY-NqMZX7FmZcMSOJlB7m0xKkt8'
 
@@ -23,7 +25,6 @@ GOOGLE_API_KEY = 'AIzaSyBcMpu4LY-NqMZX7FmZcMSOJlB7m0xKkt8'
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
 
-ALLOWED_HOSTS = []
 
 ADMINS = (
     # ('Gang Fu', 'gangfu1982@gmail.com'),
@@ -44,11 +45,14 @@ INSTALLED_APPS = (
     'rest_framework_gis',
     'rest_framework_swagger',
     'django_nose',
+    'corsheaders',
+    'sorl.thumbnail',
     'drf',
 )
 
 MIDDLEWARE_CLASSES = (
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -58,8 +62,20 @@ MIDDLEWARE_CLASSES = (
     'django.middleware.security.SecurityMiddleware',
 )
 
-ROOT_URLCONF = 'webizcafe.urls'
+CORS_ORIGIN_ALLOW_ALL = True
+CORS_ALLOW_METHODS = (
+        'GET',
+        'POST',
+        'PUT',
+        'PATCH',
+        'DELETE',
+        'OPTIONS'
+    )
 
+MEDIA_ROOT = '/var/www/media/'
+MEDIA_URL = 'http://45.55.185.118/media/'
+
+ROOT_URLCONF = 'webizcafe.urls'
 AUTH_USER_MODEL = 'drf.Author'
 
 REST_FRAMEWORK = {
@@ -68,19 +84,19 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.BasicAuthentication',
         'rest_framework_jwt.authentication.JSONWebTokenAuthentication',
     ) ,
-    'DEFAULT_FILTER_BACKENDS': 'rest_framework.filters.DjangoFilterBackend',
+    'DEFAULT_FILTER_BACKENDS': ('rest_framework.filters.DjangoFilterBackend',),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 10,
+    'PAGE_SIZE': 6,
     'PAGINATE_BY_PARAM': 'page_size',
     'MAX_PAGINATE_BY': 100,
 }
 
 DJOSER = {
-    'DOMAIN': '45.55.185.118:8080',
+    'DOMAIN': '45.55.185.118',
     'SITE_NAME': 'webizcafe',
     'DEFAULT_FROM_EMAIL': 'webizcafe@gmail.com',
-    'PASSWORD_RESET_CONFIRM_URL': 'password/reset/confirm/{uid}/{token}',
-    'ACTIVATION_URL': 'activate/{uid}/{token}/',
+    'PASSWORD_RESET_CONFIRM_URL': 'api/v1/password/reset/confirm/{uid}/{token}',
+    'ACTIVATION_URL': 'api/v1/activate/{uid}/{token}/',
     'SEND_ACTIVATION_EMAIL': True,
 }
 
@@ -106,11 +122,11 @@ JWT_AUTH = {
     'JWT_VERIFY': True,
     'JWT_VERIFY_EXPIRATION': True,
     'JWT_LEEWAY': 0,
-    'JWT_EXPIRATION_DELTA': datetime.timedelta(seconds=300),
+    'JWT_EXPIRATION_DELTA': datetime.timedelta(seconds=36000),
     'JWT_AUDIENCE': None,
     'JWT_ISSUER': None,
 
-    'JWT_ALLOW_REFRESH': False,
+    'JWT_ALLOW_REFRESH': True,
     'JWT_REFRESH_EXPIRATION_DELTA': datetime.timedelta(days=7),
 
     'JWT_AUTH_HEADER_PREFIX': 'JWT',
@@ -133,7 +149,7 @@ SWAGGER_SETTINGS = {
     'is_superuser': False,
     'permission_denied_handler': None,
     'resource_access_handler': None,
-    'base_path':'45.55.185.118:8000/docs/',
+    'base_path':'45.55.185.118:8080/docs',
     'info': {
         'contact': 'apiteam@wordnik.com',
         'description': 'This is a sample server Petstore server. '
