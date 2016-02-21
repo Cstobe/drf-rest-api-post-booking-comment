@@ -181,3 +181,4 @@ class BookingSerializer(serializers.ModelSerializer):
         if Booking.objects.filter( begin__lte=data['end'], end__gte=data['begin'] ).exists():
             raise serializers.ValidationError("Overlapping dates")
         return super(BookingSerializer, self).validate(data)
+

@@ -4,7 +4,7 @@ from django.db.models import Q
 from django.conf import settings as django_settings
 from django.contrib.auth.tokens import default_token_generator
 
-from rest_framework import permissions, mixins, renderers, status, response, generics, views, filters
+from rest_framework import permissions, mixins, renderers, status, response, generics, views, filters, pagination
 from rest_framework.reverse import reverse
 from rest_framework.decorators import detail_route
 from rest_framework.authtoken.models import Token
@@ -109,7 +109,7 @@ class AuthorDetailView(generics.RetrieveUpdateDestroyAPIView):
     
     def get_object(self):
         queryset = Author.objects.filter(is_active=True)
-        obj = get_object_or_404(queryset.filter(pk=self.request.user.pk)[0])
+        obj = queryset.filter(pk=self.request.user.pk)[0]
         self.check_object_permissions(self.request, obj)
         return obj
 
@@ -187,6 +187,12 @@ class PostListCreateView(generics.ListCreateAPIView):
         serializer.save(author=self.request.user)
 
 
+class LargeResultsSetPagination(pagination.PageNumberPagination):
+    page_size = 1000
+    page_size_query_param = 'page_size'
+    max_page_size = 10000
+
+
 class AuthorPostListView(generics.ListAPIView):
     """
     List and Create post endpoint
@@ -194,9 +200,10 @@ class AuthorPostListView(generics.ListAPIView):
     """
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = LargeResultsSetPagination
     def get_queryset(self):
         user = self.request.user
-        return Post.objects.filter(author=user)
+        return Post.objects.filter(author=user).order_by('-updated')
 
 
 class PostDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -265,9 +272,10 @@ class AuthorCommentListView(generics.ListAPIView):
     """
     serializer_class = CommentSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = LargeResultsSetPagination
     def get_queryset(self):
         user = self.request.user
-        return Comment.objects.filter(author=user)
+        return Comment.objects.filter(author=user).order_by('-updated')
 
 
 class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -311,9 +319,11 @@ class AuthorBookingListView(generics.ListAPIView):
     Allowed request method: Get
     """
     serializer_class = BookingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = LargeResultsSetPagination
     def get_queryset(self):
         user = self.request.user
-        return Booking.objects.filter(author=user)
+        return Booking.objects.filter(author=user).order_by('-updated')
 
 
 class BookingSearchView(generics.ListAPIView):
