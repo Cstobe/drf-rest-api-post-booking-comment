@@ -42,6 +42,7 @@ INSTALLED_APPS = (
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'djoser',
     'rest_framework_gis',
     'rest_framework_swagger',
     'django_nose',
@@ -95,9 +96,10 @@ DJOSER = {
     'DOMAIN': '45.55.185.118',
     'SITE_NAME': 'webizcafe',
     'DEFAULT_FROM_EMAIL': 'webizcafe@gmail.com',
-    'PASSWORD_RESET_CONFIRM_URL': 'api/v1/password/reset/confirm/{uid}/{token}',
-    'ACTIVATION_URL': 'api/v1/activate/{uid}/{token}/',
+    'PASSWORD_RESET_CONFIRM_URL': 'login/?status=passwdreset&uid={uid}&token={token}',
+    'ACTIVATION_URL': 'login/?status=activation&uid={uid}&token={token}',
     'SEND_ACTIVATION_EMAIL': True,
+    'PASSWORD_RESET_CONFIRM_RETYPE': True,
 }
 
 import datetime

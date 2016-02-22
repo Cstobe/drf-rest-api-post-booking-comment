@@ -16,10 +16,8 @@ from rest_framework_gis.pagination import GeoJsonPagination
 
 from drf.models import Author, Post, PostImage, Comment, Booking, Location, BoxedLocation
 from drf.serializers import AuthorSerializer, PostSerializer, PostImageSerializer, CommentSerializer, BookingSerializer
-from drf.serializers import UidAndTokenSerializer
 from drf.serializers import LocationSerializer, BoxedLocationSerializer
 from drf.permissions import IsAuthorOrReadOnly
-from drf import utils, signals
 
 class APIRootView(views.APIView):
     """
@@ -28,7 +26,6 @@ class APIRootView(views.APIView):
     """
     def get(self, request, format=None):
         data = {
-            'register': reverse('author-create', request=request, format=format),
             'authors': reverse('author-list', request=request, format=format),
             'post': reverse('post-list-create', request=request, format=format),
             'comment': reverse('comment-create', request=request, format=format),
@@ -41,51 +38,6 @@ class APIRootView(views.APIView):
             'location': reverse('location-list-create', request=request, format=format),
         }
         return Response(data)
-
-
-
-class AuthorRegisterView(utils.SendEmailViewMixin, generics.CreateAPIView):
-    """
-    Author registration endpoint
-    Allowed request method: Post
-    """
-    permission_classes = [permissions.AllowAny]
-    serializer_class = AuthorSerializer
-    token_generator = default_token_generator
-    subject_template_name = 'activation_email_subject.txt'
-    plain_body_template_name = 'activation_email_body.txt'
-
-    def perform_create(self, serializer):
-        instance = serializer.save()
-        signals.user_registered.send(sender=self.__class__, user=instance, request=self.request)
-        self.send_email(**self.get_send_email_kwargs(instance))
-
-    def get_email_context(self, user):
-        context = super(AuthorRegisterView, self).get_email_context(user)
-        context['url'] = django_settings.DJOSER['ACTIVATION_URL'].format(**context)
-        return context 
-
-class ActivationView(views.APIView):
-    """
-    Use this endpoint to activate user account.
-    """
-    permission_classes = (permissions.AllowAny,)
-
-    def get(self, request, uid, token, format=None):
-        dictionary = {}
-        dictionary['uid'] = uid
-        dictionary['token'] = token
-        serializer = UidAndTokenSerializer(data=dictionary)
-        if serializer.is_valid():
-            serializer.author.is_active = True
-            serializer.author.save()
-            signals.user_activated.send(sender=self.__class__, user=serializer.author, request=self.request)
-            return Response(data=uid, status=status.HTTP_200_OK)
-        else:
-            return response.Response(
-                data=serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST,
-            )
 
 
 class AuthorListView(generics.ListAPIView):
@@ -119,12 +71,6 @@ class AuthorDetailView(generics.RetrieveUpdateDestroyAPIView):
             if obj.username != request.data['username']:
                 return Response({'detail': 'Username does not match'}, status=status.HTTP_400_BAD_REQUEST)
         obj.is_active=False
-        obj.save()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-    @detail_route(methods=['post'], url_path='change-password')
-    def reset_password(self, request, **kwargs):
-        obj = self.get_object()
         obj.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

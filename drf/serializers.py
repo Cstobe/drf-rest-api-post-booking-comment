@@ -16,7 +16,6 @@ from rest_framework_gis import serializers as gis_serializers
 from rest_framework_recursive.fields import RecursiveField
 
 from drf.models import Author, Post, PostImage, Comment, Booking, Location, BoxedLocation
-from drf import utils
 from drf.fields import HyperlinkedSorlImageField
 
 class AuthorSerializer(serializers.ModelSerializer):
@@ -57,30 +56,6 @@ class AuthorSerializer(serializers.ModelSerializer):
         author.set_password(validated_data['password'])
         author.save()
         return author
-
-
-
-class UidAndTokenSerializer(serializers.Serializer):
-    uid = serializers.CharField()
-    token = serializers.CharField()
-
-    default_error_messages = {
-        'invalid_token': utils.INVALID_TOKEN_ERROR
-    }
-
-    def validate_uid(self, value):
-        try:
-            uid = utils.decode_uid(value)
-            self.author = Author.objects.get(pk=uid)
-        except (Author.DoesNotExist, ValueError, TypeError, OverflowError) as error:
-            raise serializers.ValidationError(error)
-        return value
-
-    def validate(self, attrs):
-        attrs = super(UidAndTokenSerializer, self).validate(attrs)
-        if not default_token_generator.check_token(self.author, attrs['token']):
-            raise serializers.ValidationError(self.error_messages['invalid_token'])
-        return attrs
 
 
 class PostImageSerializer(serializers.ModelSerializer):
