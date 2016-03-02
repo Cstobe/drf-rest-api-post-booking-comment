@@ -62,7 +62,7 @@ class PostImageSerializer(serializers.ModelSerializer):
     author = serializers.ReadOnlyField(source='author.username')
     post = serializers.PrimaryKeyRelatedField(read_only=True)
     thumbnail = HyperlinkedSorlImageField(
-        '555x300',
+        '400x260',
         options={"crop": "center"},
         source='image',
         read_only=True
@@ -153,7 +153,7 @@ class BookingSerializer(serializers.ModelSerializer):
         fields = ('id', 'author', 'post', 'begin', 'end', 'title', 'status', 'created', 'updated')
 
     def validate(self, data):
-        if Booking.objects.filter( begin__lte=data['end'], end__gte=data['begin'] ).exists():
+        if Booking.objects.filter( begin__lte=data['end'], end__gte=data['begin'], post__pk=self.initial_data['postid'] ).exists():
             raise serializers.ValidationError("Overlapping dates")
         return super(BookingSerializer, self).validate(data)
 
