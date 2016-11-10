@@ -2,6 +2,7 @@
 from __future__ import unicode_literals
 
 from django.db import models, migrations
+import drf.models
 import django.contrib.auth.models
 import django.contrib.gis.db.models.fields
 import django.utils.timezone
@@ -48,32 +49,12 @@ class Migration(migrations.Migration):
             name='Booking',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('note', models.TextField(null=True, blank=True)),
-                ('status', models.CharField(default=b'approved', max_length=20)),
-                ('created', models.DateTimeField(editable=False)),
-                ('updated', models.DateTimeField()),
-                ('author', models.ForeignKey(related_name='bookings', editable=False, to=settings.AUTH_USER_MODEL)),
-            ],
-        ),
-        migrations.CreateModel(
-            name='BookingDateTime',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('begin', models.DateTimeField()),
                 ('end', models.DateTimeField()),
-                ('status', models.CharField(default=b'approved', max_length=20)),
-                ('author', models.ManyToManyField(related_name='bookingdatetime', editable=False, to=settings.AUTH_USER_MODEL)),
-                ('booking', models.ManyToManyField(related_name='bookingdatetime', editable=False, to='drf.Booking')),
-            ],
-        ),
-        migrations.CreateModel(
-            name='BookingOption',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('type', models.CharField(default=b'per day limit to 100 person', max_length=20)),
-                ('value', models.DecimalField(max_digits=5, decimal_places=2)),
-                ('unit', models.CharField(default=b'RMB', max_length=10)),
-                ('author', models.ForeignKey(related_name='options', editable=False, to=settings.AUTH_USER_MODEL)),
+                ('status', models.CharField(default=b'proposed', max_length=20)),
+                ('created', models.DateTimeField(editable=False)),
+                ('updated', models.DateTimeField(editable=False)),
+                ('author', models.ForeignKey(related_name='bookings', editable=False, to=settings.AUTH_USER_MODEL)),
             ],
         ),
         migrations.CreateModel(
@@ -84,16 +65,15 @@ class Migration(migrations.Migration):
                 ('rating', models.PositiveIntegerField()),
                 ('status', models.CharField(default=b'approved', max_length=20)),
                 ('created', models.DateTimeField(editable=False)),
-                ('updated', models.DateTimeField()),
+                ('updated', models.DateTimeField(editable=False)),
                 ('author', models.ForeignKey(related_name='comments', editable=False, to=settings.AUTH_USER_MODEL)),
-                ('parent', models.ForeignKey(related_name='childs', blank=True, editable=False, to='drf.Comment')),
+                ('parent', models.ForeignKey(related_name='children', blank=True, editable=False, to='drf.Comment', null=True)),
             ],
         ),
         migrations.CreateModel(
             name='Location',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('name', models.CharField(max_length=32)),
                 ('geometry', django.contrib.gis.db.models.fields.GeometryField(srid=4326, editable=False)),
                 ('address', models.CharField(unique=True, max_length=200)),
                 ('created', models.DateTimeField(editable=False)),
@@ -106,6 +86,7 @@ class Migration(migrations.Migration):
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('title', models.CharField(default=b'post title', max_length=1000)),
                 ('content', models.TextField(null=True, blank=True)),
+                ('price', models.DecimalField(max_digits=8, decimal_places=2)),
                 ('status', models.CharField(default=b'submitted', max_length=20)),
                 ('posttype', models.CharField(default=b'office', max_length=20)),
                 ('created', models.DateTimeField(editable=False)),
@@ -117,10 +98,9 @@ class Migration(migrations.Migration):
             name='PostImage',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('name', models.CharField(default=b'post image', max_length=100)),
-                ('image', models.ImageField(max_length=1000, upload_to=b'postimage')),
+                ('image', models.ImageField(upload_to=drf.models.upload_to, null=True, verbose_name=b'image', blank=True)),
                 ('created', models.DateTimeField(editable=False)),
-                ('updated', models.DateTimeField()),
+                ('updated', models.DateTimeField(editable=False)),
                 ('author', models.ForeignKey(related_name='images', editable=False, to=settings.AUTH_USER_MODEL)),
                 ('post', models.ForeignKey(related_name='images', editable=False, to='drf.Post')),
             ],
@@ -130,6 +110,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('location_ptr', models.OneToOneField(parent_link=True, auto_created=True, primary_key=True, serialize=False, to='drf.Location')),
                 ('bbox_geometry', django.contrib.gis.db.models.fields.PolygonField(srid=4326)),
+                ('name', models.CharField(unique=True, max_length=50)),
             ],
             bases=('drf.location',),
         ),
@@ -142,21 +123,6 @@ class Migration(migrations.Migration):
             model_name='comment',
             name='post',
             field=models.ForeignKey(related_name='comments', editable=False, to='drf.Post'),
-        ),
-        migrations.AddField(
-            model_name='bookingoption',
-            name='post',
-            field=models.ForeignKey(related_name='options', editable=False, to='drf.Post'),
-        ),
-        migrations.AddField(
-            model_name='bookingdatetime',
-            name='post',
-            field=models.ManyToManyField(related_name='bookingdatetime', editable=False, to='drf.Post'),
-        ),
-        migrations.AddField(
-            model_name='booking',
-            name='bookingoption',
-            field=models.ForeignKey(related_name='bookings', editable=False, to='drf.BookingOption'),
         ),
         migrations.AddField(
             model_name='booking',
